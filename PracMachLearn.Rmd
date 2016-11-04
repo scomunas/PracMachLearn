@@ -1,0 +1,139 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Sergio Comuñas"
+date: "3 de noviembre de 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible 
+to collect a large amount of data about personal activity relatively 
+inexpensively. These type of devices are part of the quantified self movement -
+ a group of enthusiasts who take measurements about themselves regularly to 
+ improve their health, to find patterns in their behavior, or because they are 
+ tech geeks. One thing that people regularly do is quantify how much of a 
+ particular activity they do, but they rarely quantify how well they do it. In 
+ this project, your goal will be to use data from accelerometers on the belt, 
+ forearm, arm, and dumbell of 6 participants. They were asked to perform barbell
+ lifts correctly and incorrectly in 5 different ways. More information is 
+ available from the website here: http://groupware.les.inf.puc-rio.br/har (see 
+ the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har.
+
+## Preliminar analysis
+
+### Reproducibility
+We will use seed 1234 and need to install several packages that are show next.
+
+```{r Libraries and Seed, cache = FALSE}
+## Load the necessary libraries
+suppressMessages(library(caret))
+suppressMessages(library(randomForest))
+suppressMessages(library(rpart))
+
+## Assure reproducibility
+set.seed(1234)
+```
+
+### Load Data and analysis
+First of all we will load the data in 2 packages.
+```{r Download Files, cache = TRUE}
+## Download the 2 files
+url.data <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url.validate <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url.data, "data.csv")
+download.file(url.validate, "validate.csv")
+```
+
+As you can see there is a 5 type factor to precict called "classe". It's values
+are from A to E. Class A corresponds to correct execution and the rest are 
+different mistakes done in the test.
+
+We will do Cross-Validation partitioning the data in 30/70% for testing/training
+purposes. Our expected out of sample error will be measured using the accuracy
+for each model (OOSE = 1 - Accuracy) and we will try to minimize it.
+
+Also will clean the data for not having NA values and extract personal data
+columns like User Name, etc.
+
+```{r Getting and Cleaning Data, cache = FALSE}
+## Read the two files
+data.in <- read.csv("data.csv", sep = ",", stringsAsFactors = FALSE,
+                     na.strings=c("NA","#DIV/0!", ""))
+data.in$classe <- as.factor(data.in$classe)
+validate <- read.csv("validate.csv", sep = ",", stringsAsFactors = FALSE,
+                 na.strings=c("NA","#DIV/0!", ""))
+
+## Get only columns that have almost 95% correct values (not NAs) and delete
+## personal data columns as: X, user_name, timestamp and windows (1:7)
+data.clean <- data.in[,colSums(is.na(data.in)) <= (dim(data.in)[1] * 0.95)]
+data.clean <- data.clean[, -c(1:7)]
+validate <- validate[,colSums(is.na(data.in)) <= (dim(data.in)[1] * 0.95)]
+validate <- validate[, -c(1:7)]
+
+## Create training and test data
+inTrain <- createDataPartition(y = data.clean$classe, p = 0.7, list = FALSE)
+training <- data.clean[inTrain, ]
+test <- data.clean[-inTrain, ]
+
+## Look for Classe column to see if there are important differences
+table(training$classe)
+histogram(training$classe)
+
+```
+
+You can see there is not a great diference in the amount for each class. A class
+is a little greater than the other ones but not so much.
+
+## Model Creation
+As we are trying to predict a factor variable and have not so much documentation
+about features we will try Tree models like: Decission Tree and Random Forest.
+With this kind of models we will not need Feature Selection phase.
+
+Also we will use test data in order to calculate the accuracy of each model.
+```{r Fitting models and calculating Accuracy, cache = TRUE}
+
+## 1. Decission Tree
+fit.dt <- rpart(classe ~ ., data = training)
+result.dt <- predict(fit.dt, test, type = "class")
+
+## 2. Random Forest
+fit.rf <- randomForest(classe ~ ., data = training, method = "class")
+result.rf <- predict(fit.rf, test)
+
+## Calculate the Accuracy of each method
+accuracy.dt <- confusionMatrix(result.dt, test$classe)$overall["Accuracy"]
+accuracy.rf <- confusionMatrix(result.rf, test$classe)$overall["Accuracy"]
+```
+
+As you can see Random Forest have a greater accuracy (`r accuracy.rf`) than
+Decission Tree (`r accuracy.dt`). Then we will use Random Forest model in order
+to predict the validation data on the Submission point.
+
+## Submission
+In this point we will predict the classe value for each row on the validation
+dataset. We will print the most probable class.
+
+```{r Submission, cache = FALSE}
+## Predict the final submission
+predict(fit.rf, validate)
+
+```
